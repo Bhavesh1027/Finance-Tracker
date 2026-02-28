@@ -1,3 +1,5 @@
+using Xunit;
+
 namespace FinanceTracker.UnitTests;
 
 public class UnitTest1
