@@ -1,6 +1,9 @@
 using System.Reflection;
+using FinanceTracker.API.Hubs;
 using FinanceTracker.API.Middleware;
+using FinanceTracker.API.Services;
 using FinanceTracker.Application;
+using FinanceTracker.Application.Abstractions;
 using FinanceTracker.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
@@ -15,6 +18,19 @@ builder.Host.UseSerilog((context, configuration) =>
 
 // Add services to the container
 builder.Services.AddControllers();
+
+builder.Services.AddSignalR();
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FrontendPolicy", policy =>
+    {
+        policy.WithOrigins("https://localhost:3000", "http://localhost:3000")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
 
 // API Versioning
 builder.Services.AddApiVersioning(options =>
@@ -83,6 +99,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
+builder.Services.AddScoped<IBudgetNotificationService, SignalRNotificationService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
@@ -98,6 +116,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseCors("FrontendPolicy");
+
 // Correlation ID must come early so all logs and downstream components see it
 app.UseMiddleware<CorrelationIdMiddleware>();
 
@@ -111,6 +131,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.MapHub<BudgetHub>("/hubs/budget");
 
 Serilog.Log.Information("Starting FinanceTracker API");
 

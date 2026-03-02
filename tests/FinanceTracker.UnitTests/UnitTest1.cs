@@ -1,11 +1,1 @@
-using Xunit;
-
 namespace FinanceTracker.UnitTests;
-
-public class UnitTest1
-{
-    [Fact]
-    public void Test1()
-    {
-    }
-}

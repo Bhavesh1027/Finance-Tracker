@@ -1,4 +1,5 @@
 using FinanceTracker.Application.Abstractions;
+using FinanceTracker.Application.DTOs;
 using FinanceTracker.Application.Events;
 using FinanceTracker.Domain.Events;
 using MediatR;
@@ -8,10 +9,12 @@ namespace FinanceTracker.Application.EventHandlers;
 public sealed class BudgetExceededDomainEventHandler : INotificationHandler<BudgetExceededDomainEvent>
 {
     private readonly IEventBus _eventBus;
+    private readonly IBudgetNotificationService _notificationService;
 
-    public BudgetExceededDomainEventHandler(IEventBus eventBus)
+    public BudgetExceededDomainEventHandler(IEventBus eventBus, IBudgetNotificationService notificationService)
     {
         _eventBus = eventBus;
+        _notificationService = notificationService;
     }
 
     public async Task Handle(BudgetExceededDomainEvent notification, CancellationToken cancellationToken)
@@ -23,5 +26,15 @@ public sealed class BudgetExceededDomainEventHandler : INotificationHandler<Budg
             notification.Limit);
 
         await _eventBus.PublishAsync(integrationEvent, cancellationToken);
+
+        var alertDto = new BudgetAlertDto(
+            notification.UserId,
+            notification.Category,
+            notification.Spent,
+            notification.Limit,
+            notification.OccurredOn.Month,
+            notification.OccurredOn.Year);
+
+        await _notificationService.SendBudgetAlertAsync(notification.UserId, alertDto, cancellationToken);
     }
 }
