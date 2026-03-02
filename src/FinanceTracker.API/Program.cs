@@ -1,4 +1,5 @@
 using System.Reflection;
+using FinanceTracker.API.Health;
 using FinanceTracker.API.Hubs;
 using FinanceTracker.API.Middleware;
 using FinanceTracker.API.Services;
@@ -6,15 +7,28 @@ using FinanceTracker.Application;
 using FinanceTracker.Application.Abstractions;
 using FinanceTracker.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.OpenApi.Models;
 using Serilog;
+using Serilog.Sinks.SystemConsole.Themes;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add Serilog
-builder.Host.UseSerilog((context, configuration) =>
-    configuration.ReadFrom.Configuration(context.Configuration));
+builder.Host.UseSerilog((context, services, configuration) =>
+    configuration
+        .ReadFrom.Configuration(context.Configuration)
+        .Enrich.FromLogContext()
+        .Enrich.WithMachineName()
+        .Enrich.WithEnvironmentName()
+        .Enrich.WithThreadId()
+        .WriteTo.Console(theme: AnsiConsoleTheme.Code)
+        .WriteTo.File("logs/log-.txt",
+            rollingInterval: RollingInterval.Day,
+            retainedFileCountLimit: 14,
+            shared: true));
 
 // Add services to the container
 builder.Services.AddControllers();
@@ -101,6 +115,12 @@ builder.Services.AddInfrastructure(builder.Configuration);
 
 builder.Services.AddScoped<IBudgetNotificationService, SignalRNotificationService>();
 
+// Health checks
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database")
+    .AddCheck<RedisHealthCheck>("redis")
+    .AddCheck<RabbitMqHealthCheck>("rabbitmq");
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
@@ -118,8 +138,13 @@ app.UseHttpsRedirection();
 
 app.UseCors("FrontendPolicy");
 
+app.UseSerilogRequestLogging();
+
 // Correlation ID must come early so all logs and downstream components see it
 app.UseMiddleware<CorrelationIdMiddleware>();
+
+// Enrich logs with authenticated UserId
+app.UseMiddleware<UserContextMiddleware>();
 
 // Request logging (can also use Serilog's built-in middleware, but this includes correlation ID explicitly)
 app.UseMiddleware<RequestLoggingMiddleware>();
@@ -133,6 +158,11 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.MapHub<BudgetHub>("/hubs/budget");
+
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = _ => true
+});
 
 Serilog.Log.Information("Starting FinanceTracker API");
 

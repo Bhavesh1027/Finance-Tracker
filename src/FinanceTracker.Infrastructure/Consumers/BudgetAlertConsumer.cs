@@ -19,7 +19,7 @@ public sealed class BudgetAlertConsumer : IConsumer<BudgetExceededIntegrationEve
         var message = context.Message;
 
         _logger.LogInformation(
-            "Budget exceeded alert received: UserId={UserId}, Category={Category}, Spent={Spent}, Limit={Limit}",
+            "Budget exceeded: UserId={UserId}, Category={Category}, SpentAmount={SpentAmount}, LimitAmount={LimitAmount}",
             message.UserId,
             message.Category,
             message.Spent,

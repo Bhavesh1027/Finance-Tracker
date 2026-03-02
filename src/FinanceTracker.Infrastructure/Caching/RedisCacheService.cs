@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FinanceTracker.Application.Abstractions;
+using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
 namespace FinanceTracker.Infrastructure.Caching;
@@ -13,11 +14,13 @@ public sealed class RedisCacheService : ICacheService
 
     private readonly IConnectionMultiplexer _connectionMultiplexer;
     private readonly IDatabase _database;
+    private readonly ILogger<RedisCacheService> _logger;
 
-    public RedisCacheService(IConnectionMultiplexer connectionMultiplexer)
+    public RedisCacheService(IConnectionMultiplexer connectionMultiplexer, ILogger<RedisCacheService> logger)
     {
         _connectionMultiplexer = connectionMultiplexer;
         _database = connectionMultiplexer.GetDatabase();
+        _logger = logger;
     }
 
     public async Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
@@ -26,8 +29,11 @@ public sealed class RedisCacheService : ICacheService
 
         if (value.IsNullOrEmpty)
         {
+            _logger.LogDebug("Cache miss for key {CacheKey}", key);
             return default;
         }
+
+        _logger.LogDebug("Cache hit for key {CacheKey}", key);
 
         return JsonSerializer.Deserialize<T>(value!, SerializerOptions);
     }
