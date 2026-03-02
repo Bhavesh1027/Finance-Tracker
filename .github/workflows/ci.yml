@@ -2,6 +2,87 @@ name: CI
 
 on:
   push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore
+
+      - name: Test with coverage
+        run: |
+          chmod +x ./run-coverage.sh
+          ./run-coverage.sh
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage-report
+
+      - name: Parse coverage summary
+        id: coverage
+        run: |
+          summary_file="coverage-report/Summary.txt"
+          if [ ! -f "$summary_file" ]; then
+            echo "Summary file not found"
+            exit 1
+          fi
+
+          line_cov=$(grep -m1 "Line coverage" "$summary_file" | awk '{print $3}' | tr -d '%')
+          branch_cov=$(grep -m1 "Branch coverage" "$summary_file" | awk '{print $3}' | tr -d '%')
+
+          echo "line_coverage=$line_cov" >> $GITHUB_OUTPUT
+          echo "branch_coverage=$branch_cov" >> $GITHUB_OUTPUT
+
+          echo "Line coverage: $line_cov%"
+          echo "Branch coverage: $branch_cov%"
+
+      - name: Fail if line coverage < 70%
+        if: always()
+        run: |
+          threshold=70
+          line_cov=${{ steps.coverage.outputs.line_coverage }}
+          echo "Line coverage is $line_cov%, threshold is $threshold%"
+          if [ -z "$line_cov" ]; then
+            echo "No line coverage value found"
+            exit 1
+          fi
+          if (( $(echo "$line_cov < $threshold" | bc -l) )); then
+            echo "Line coverage below threshold"
+            exit 1
+          fi
+
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: coverage-report
+          message: |
+            ### Code Coverage
+            - Line coverage: ${{ steps.coverage.outputs.line_coverage }}%
+            - Branch coverage: ${{ steps.coverage.outputs.branch_coverage }}%
+
+name: CI
+
+on:
+  push:
     branches: [main]
   pull_request:
     branches: [main]

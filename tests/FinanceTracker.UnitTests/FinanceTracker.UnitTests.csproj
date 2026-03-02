@@ -5,6 +5,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>FinanceTracker.UnitTests</RootNamespace>
+    <IsTestProject>true</IsTestProject>
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>json,lcov,opencover</CoverletOutputFormat>
+    <CoverletOutput>$(MSBuildThisFileDirectory)../coverage/FinanceTracker.UnitTests.</CoverletOutput>
+    <Exclude>[FinanceTracker.Infrastructure]*Migrations*%2c[FinanceTracker.API]*Program*%2c[FinanceTracker.Application]*DTOs*%2c[FinanceTracker.Domain]*DTOs*</Exclude>
   </PropertyGroup>
 
   <ItemGroup>
