@@ -1,0 +1,66 @@
+using System;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using FinanceTracker.Application.Abstractions;
+using StackExchange.Redis;
+
+namespace FinanceTracker.Infrastructure.Caching;
+
+public sealed class RedisCacheService : ICacheService
+{
+    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+
+    private readonly IConnectionMultiplexer _connectionMultiplexer;
+    private readonly IDatabase _database;
+
+    public RedisCacheService(IConnectionMultiplexer connectionMultiplexer)
+    {
+        _connectionMultiplexer = connectionMultiplexer;
+        _database = connectionMultiplexer.GetDatabase();
+    }
+
+    public async Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
+    {
+        var value = await _database.StringGetAsync(key);
+
+        if (value.IsNullOrEmpty)
+        {
+            return default;
+        }
+
+        return JsonSerializer.Deserialize<T>(value!, SerializerOptions);
+    }
+
+    public Task SetAsync<T>(string key, T value, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
+    {
+        var json = JsonSerializer.Serialize(value, SerializerOptions);
+        return _database.StringSetAsync(key, json, expiry);
+    }
+
+    public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
+    {
+        return _database.KeyDeleteAsync(key);
+    }
+
+    public async Task RemoveByPatternAsync(string pattern, CancellationToken cancellationToken = default)
+    {
+        foreach (var endPoint in _connectionMultiplexer.GetEndPoints())
+        {
+            var server = _connectionMultiplexer.GetServer(endPoint);
+
+            if (!server.IsConnected)
+            {
+                continue;
+            }
+
+            var keys = server.Keys(_database.Database, pattern: pattern);
+
+            foreach (var key in keys)
+            {
+                await _database.KeyDeleteAsync(key).ConfigureAwait(false);
+            }
+        }
+    }
+}
+

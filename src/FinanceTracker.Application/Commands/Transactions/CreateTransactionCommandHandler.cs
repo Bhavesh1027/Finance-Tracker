@@ -1,3 +1,4 @@
+using FinanceTracker.Application.Abstractions;
 using FinanceTracker.Application.DTOs;
 using FinanceTracker.Domain.Entities;
 using FinanceTracker.Domain.Enums;
@@ -12,15 +13,18 @@ public sealed class CreateTransactionCommandHandler : IRequestHandler<CreateTran
     private readonly ITransactionRepository _transactionRepository;
     private readonly IBudgetRepository _budgetRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ICacheService _cacheService;
 
     public CreateTransactionCommandHandler(
         ITransactionRepository transactionRepository,
         IBudgetRepository budgetRepository,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        ICacheService cacheService)
     {
         _transactionRepository = transactionRepository;
         _budgetRepository = budgetRepository;
         _unitOfWork = unitOfWork;
+        _cacheService = cacheService;
     }
 
     public async Task<TransactionDto> Handle(CreateTransactionCommand request, CancellationToken cancellationToken)
@@ -36,6 +40,8 @@ public sealed class CreateTransactionCommandHandler : IRequestHandler<CreateTran
 
         await _transactionRepository.AddAsync(transaction, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        await _cacheService.RemoveByPatternAsync($"summary:{request.UserId}:*", cancellationToken);
 
         // Check budget for expenses only
         if (request.TransactionType == TransactionType.Expense)
