@@ -27,13 +27,14 @@ public sealed class BudgetExceededDomainEventHandler : INotificationHandler<Budg
 
         await _eventBus.PublishAsync(integrationEvent, cancellationToken);
 
+        var now = DateTime.UtcNow;
         var alertDto = new BudgetAlertDto(
             notification.UserId,
             notification.Category,
             notification.Spent,
             notification.Limit,
-            notification.OccurredOn.Month,
-            notification.OccurredOn.Year);
+            now.Month,
+            now.Year);
 
         await _notificationService.SendBudgetAlertAsync(notification.UserId, alertDto, cancellationToken);
     }

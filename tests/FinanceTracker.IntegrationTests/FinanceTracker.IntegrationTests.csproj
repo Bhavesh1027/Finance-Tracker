@@ -38,6 +38,7 @@
 
   <ItemGroup>
     <None Include="Features\*.feature" />
+    <None Include="Features\*.feature" />
   </ItemGroup>
 
 </Project>
