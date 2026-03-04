@@ -18,7 +18,7 @@ public abstract class IntegrationTestBase : IAsyncLifetime
     protected readonly FinanceTrackerWebApplicationFactory Factory;
     protected readonly HttpClient Client;
 
-    protected Guid TestUserId { get; } = Guid.NewGuid();
+    protected Guid TestUserId { get; private set; }
 
     protected IntegrationTestBase()
     {
@@ -34,7 +34,9 @@ public abstract class IntegrationTestBase : IAsyncLifetime
         using var scope = Factory.Services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        context.Users.Add(User.Create(TestUserId, "test@example.com", "Test User"));
+        var user = User.Create(Email.Create("test@example.com"), "Test User");
+        TestUserId = user.Id;
+        context.Users.Add(user);
 
         var amount = Money.Create(100m, "USD");
         var transaction = Transaction.Create(

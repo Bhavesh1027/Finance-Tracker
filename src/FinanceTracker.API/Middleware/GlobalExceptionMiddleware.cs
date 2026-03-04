@@ -58,13 +58,13 @@ public sealed class GlobalExceptionMiddleware
                 (int)HttpStatusCode.Unauthorized,
                 "Unauthorized",
                 "You are not authorized to perform this action.",
-                null as IDictionary<string, string[]>?
+                (IDictionary<string, string[]>?)null
             ),
             _ => (
                 (int)HttpStatusCode.InternalServerError,
                 "An error occurred",
                 _environment.IsDevelopment() ? exception.ToString() : "An unexpected error occurred.",
-                null as IDictionary<string, string[]>?
+                (IDictionary<string, string[]>?)null
             )
         };
 

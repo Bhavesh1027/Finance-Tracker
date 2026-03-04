@@ -48,7 +48,8 @@ public sealed class Budget : Entity<Guid>
     {
         if (spent > LimitAmount.Amount)
         {
-            RaiseDomainEvent(new BudgetExceededDomainEvent(UserId, Category, spent, LimitAmount.Amount));
+            var occurredOn = new DateTime(Year, Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            RaiseDomainEvent(new BudgetExceededDomainEvent(UserId, Category, spent, LimitAmount.Amount, occurredOn));
         }
     }
 

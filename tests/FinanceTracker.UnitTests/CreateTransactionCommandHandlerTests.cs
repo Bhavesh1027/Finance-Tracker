@@ -8,6 +8,7 @@ using FinanceTracker.Domain.Repositories;
 using FinanceTracker.Domain.ValueObjects;
 using FluentAssertions;
 using Moq;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace FinanceTracker.UnitTests;
@@ -18,9 +19,15 @@ public sealed class CreateTransactionCommandHandlerTests
     private readonly Mock<IBudgetRepository> _budgetRepositoryMock = new();
     private readonly Mock<IUnitOfWork> _unitOfWorkMock = new();
     private readonly Mock<ICacheService> _cacheServiceMock = new();
+    private readonly Mock<ILogger<CreateTransactionCommandHandler>> _loggerMock = new();
 
     private CreateTransactionCommandHandler CreateHandler()
-        => new(_transactionRepositoryMock.Object, _budgetRepositoryMock.Object, _unitOfWorkMock.Object, _cacheServiceMock.Object);
+        => new(
+            _transactionRepositoryMock.Object,
+            _budgetRepositoryMock.Object,
+            _unitOfWorkMock.Object,
+            _cacheServiceMock.Object,
+            _loggerMock.Object);
 
     [Fact]
     public async Task Should_Create_Transaction_WhenValidInput()
@@ -109,14 +116,12 @@ public sealed class CreateTransactionCommandHandlerTests
             DateTime.UtcNow,
             TransactionType.Expense);
 
-        var budget = new Domain.Entities.Budget(
-            Guid.NewGuid(),
+        var budget = Budget.Create(
             userId,
             Category.Food,
-            100m,
-            "USD",
-            DateTime.UtcNow.Month,
-            DateTime.UtcNow.Year);
+            Money.Create(100m, "USD"),
+            command.Date.Month,
+            command.Date.Year);
 
         _budgetRepositoryMock
             .Setup(b => b.GetByUserCategoryMonthAsync(

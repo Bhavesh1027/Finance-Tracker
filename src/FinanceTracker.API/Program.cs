@@ -167,3 +167,5 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 Serilog.Log.Information("Starting FinanceTracker API");
 
 app.Run();
+
+public partial class Program { }

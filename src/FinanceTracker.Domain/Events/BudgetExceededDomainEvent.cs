@@ -7,4 +7,5 @@ public sealed record BudgetExceededDomainEvent(
     Guid UserId,
     Enums.Category Category,
     decimal Spent,
-    decimal Limit) : IDomainEvent, INotification;
+    decimal Limit,
+    DateTime OccurredOn) : IDomainEvent, INotification;
