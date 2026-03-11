@@ -1,0 +1,137 @@
+@page "/register"
+@layout EmptyLayout
+
+@using FinanceTracker.BlazorUI.Models
+@using FinanceTracker.BlazorUI.Pages.Auth
+@inject NavigationManager Navigation
+@inject IAuthService AuthService
+
+<MudPaper Class="auth-page">
+    <div class="auth-background" />
+
+    <div class="auth-card">
+        <MudPaper Elevation="8" Class="auth-card-inner">
+            <MudStack Spacing="2" AlignItems="AlignItems.Center">
+                <MudAvatar Size="Size.Large" Color="Color.Primary">
+                    💰
+                </MudAvatar>
+                <MudText Typo="Typo.h4" Class="mt-2">Create Account</MudText>
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">
+                    Start tracking your spending in minutes.
+                </MudText>
+            </MudStack>
+
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-4">
+                    @_errorMessage
+                </MudAlert>
+            }
+
+            <EditForm Model="_model" OnValidSubmit="HandleValidSubmit">
+                <DataAnnotationsValidator />
+                <MudStack Spacing="2" Class="mt-4">
+                    <MudTextField @bind-Value="_model.FullName"
+                                  Label="Full Name"
+                                  Variant="Variant.Outlined"
+                                  Required="true"
+                                  For="@(() => _model.FullName)" />
+
+                    <MudTextField @bind-Value="_model.Email"
+                                  Label="Email"
+                                  Variant="Variant.Outlined"
+                                  Required="true"
+                                  For="@(() => _model.Email)"
+                                  InputType="InputType.Email" />
+
+                    <MudTextField @bind-Value="_model.Password"
+                                  Label="Password"
+                                  Variant="Variant.Outlined"
+                                  Required="true"
+                                  For="@(() => _model.Password)"
+                                  InputType="InputType.Password" />
+
+                    <MudTextField @bind-Value="_model.ConfirmPassword"
+                                  Label="Confirm Password"
+                                  Variant="Variant.Outlined"
+                                  Required="true"
+                                  For="@(() => _model.ConfirmPassword)"
+                                  InputType="InputType.Password" />
+
+                    <MudButton Type="Button"
+                               Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Disabled="_isSubmitting"
+                               OnClick="SubmitAsync"
+                               Class="mt-2"
+                               FullWidth="true">
+                        @if (_isSubmitting)
+                        {
+                            <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="me-2" />
+                            <span>Creating account...</span>
+                        }
+                        else
+                        {
+                            <span>Create Account</span>
+                        }
+                    </MudButton>
+
+                    <MudText Typo="Typo.body2" Align="Align.Center" Class="mt-2">
+                        Already have an account?
+                        <MudLink Href="/login">Sign in</MudLink>
+                    </MudText>
+                </MudStack>
+            </EditForm>
+        </MudPaper>
+    </div>
+</MudPaper>
+
+@code {
+    private readonly RegisterModel _model = new();
+
+    private bool _isSubmitting;
+    private string? _errorMessage;
+
+    private async Task SubmitAsync()
+    {
+        if (_isSubmitting)
+        {
+            return;
+        }
+
+        _isSubmitting = true;
+        _errorMessage = null;
+
+        try
+        {
+            var request = new RegisterRequest
+            {
+                Name = _model.FullName,
+                Email = _model.Email,
+                Password = _model.Password
+            };
+
+            await AuthService.RegisterAsync(request);
+            Navigation.NavigateTo("/dashboard", true);
+        }
+        catch (ApiException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        catch (Exception)
+        {
+            _errorMessage = "An unexpected error occurred while creating your account.";
+        }
+        finally
+        {
+            _isSubmitting = false;
+            StateHasChanged();
+        }
+    }
+
+    private Task HandleValidSubmit()
+    {
+        return SubmitAsync();
+    }
+}
+
