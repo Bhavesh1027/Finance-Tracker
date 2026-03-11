@@ -1,0 +1,284 @@
+@page "/transactions"
+@attribute [Authorize]
+
+@using FinanceTracker.BlazorUI.Models
+@inject ITransactionService TransactionService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudPaper Class="pa-4">
+    <MudStack Spacing="3">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+            <MudText Typo="Typo.h4">Transactions</MudText>
+        </MudStack>
+
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+            <MudDatePicker @bind-Date="_selectedMonth"
+                           PickerVariant="PickerVariant.Month"
+                           Label="Month"
+                           DateFormat="MMM yyyy"
+                           OnClose="ReloadForMonth" />
+
+            <MudSelect T="Category" Label="Category" MultiSelection="true" @bind-SelectedValues="_selectedCategories" Class="min-width-200">
+                @foreach (Category category in Enum.GetValues(typeof(Category)))
+                {
+                    <MudSelectItem Value="category">@category</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudButtonGroup Color="Color.Primary" Variant="Variant.Outlined">
+                <MudButton OnClick="@(() => SetTypeFilter(null))" Disabled="@(_typeFilter is null)">All</MudButton>
+                <MudButton OnClick="@(() => SetTypeFilter(TransactionType.Income))" Disabled="@(_typeFilter == TransactionType.Income)">Income</MudButton>
+                <MudButton OnClick="@(() => SetTypeFilter(TransactionType.Expense))" Disabled="@(_typeFilter == TransactionType.Expense)">Expense</MudButton>
+            </MudButtonGroup>
+
+            <MudTextField @bind-Value="_search"
+                          Placeholder="Search description..."
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate="true"
+                          DebounceInterval="300"
+                          OnDebouncedValueChanged="@(_ => ApplyFilters())"
+                          Class="flex-grow-1" />
+
+            <MudSpacer />
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="OpenAddDialog">
+                Add Transaction
+            </MudButton>
+        </MudStack>
+
+        @if (_loading)
+        {
+            <MudSkeleton Width="100%" Height="400px" Animation="Animation.Wave" />
+        }
+        else
+        {
+            <MudTable Items="_filtered" Hover="true" Dense="true">
+                <HeaderContent>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Category</MudTh>
+                    <MudTh>Description</MudTh>
+                    <MudTh>Type</MudTh>
+                    <MudTh Align="Align.Right">Amount</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Date.ToString("dd MMM")</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Color="@GetCategoryColor(context.Category)" Size="Size.Small" Variant="Variant.Outlined">
+                            @context.Category
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>
+                        <MudTooltip Text="@context.Description">
+                            <span class="truncate-text">@context.Description</span>
+                        </MudTooltip>
+                    </MudTd>
+                    <MudTd>
+                        @if (context.TransactionType == TransactionType.Income)
+                        {
+                            <MudIcon Color="Color.Success" Icon="@Icons.Material.Filled.ArrowUpward" />
+                        }
+                        else
+                        {
+                            <MudIcon Color="Color.Error" Icon="@Icons.Material.Filled.ArrowDownward" />
+                        }
+                    </MudTd>
+                    <MudTd Align="Align.Right">
+                        <MudText Typo="Typo.body1" Class="fw-bold"
+                                 Color="@(context.TransactionType == TransactionType.Income ? Color.Success : Color.Error)">
+                            @context.Amount.ToString("C")
+                        </MudText>
+                    </MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                       Color="Color.Primary"
+                                       Size="Size.Small"
+                                       OnClick="@(() => OpenEditDialog(context))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                       Color="Color.Error"
+                                       Size="Size.Small"
+                                       OnClick="@(() => OpenDeleteDialog(context))" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+
+        <MudPaper Elevation="1" Class="pa-3 mt-2">
+            <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.body2">
+                    <b>Total Income:</b> @_filtered.Where(t => t.TransactionType == TransactionType.Income).Sum(t => t.Amount).ToString("C")
+                </MudText>
+                <MudText Typo="Typo.body2">
+                    <b>Total Expenses:</b> @_filtered.Where(t => t.TransactionType == TransactionType.Expense).Sum(t => t.Amount).ToString("C")
+                </MudText>
+                <MudText Typo="Typo.body2">
+                    <b>Net:</b> @(_filtered.Where(t => t.TransactionType == TransactionType.Income).Sum(t => t.Amount) - _filtered.Where(t => t.TransactionType == TransactionType.Expense).Sum(t => t.Amount)).ToString("C")
+                </MudText>
+            </MudStack>
+        </MudPaper>
+    </MudStack>
+</MudPaper>
+
+@code {
+    private DateTime _selectedMonth = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+    private bool _loading = true;
+
+    private List<TransactionDto> _all = new();
+    private List<TransactionDto> _filtered = new();
+
+    private HashSet<Category> _selectedCategories = new();
+    private TransactionType? _typeFilter;
+    private string _search = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTransactionsAsync();
+    }
+
+    private async Task ReloadForMonth()
+    {
+        await LoadTransactionsAsync();
+    }
+
+    private async Task LoadTransactionsAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            var month = _selectedMonth.Month;
+            var year = _selectedMonth.Year;
+
+            _all = await TransactionService.GetTransactionsAsync(month, year) ?? new List<TransactionDto>();
+            ApplyFilters();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("Failed to load transactions.", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SetTypeFilter(TransactionType? type)
+    {
+        _typeFilter = type;
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        IEnumerable<TransactionDto> query = _all;
+
+        if (_selectedCategories.Count > 0)
+        {
+            query = query.Where(t => _selectedCategories.Contains(t.Category));
+        }
+
+        if (_typeFilter is not null)
+        {
+            query = query.Where(t => t.TransactionType == _typeFilter);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            query = query.Where(t => t.Description.Contains(_search, StringComparison.OrdinalIgnoreCase));
+        }
+
+        _filtered = query
+            .OrderByDescending(t => t.Date)
+            .ToList();
+    }
+
+    private Color GetCategoryColor(Category category)
+    {
+        return category switch
+        {
+            Category.Food => Color.Primary,
+            Category.Entertainment => Color.Secondary,
+            Category.Housing => Color.Info,
+            Category.Transportation => Color.Warning,
+            Category.Healthcare => Color.Success,
+            Category.Shopping => Color.Tertiary,
+            Category.Savings => Color.Success,
+            Category.Investment => Color.Info,
+            _ => Color.Default
+        };
+    }
+
+    private async Task OpenAddDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            ["Currencies"] = new[] { "INR", "USD", "EUR" }
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+
+        var dialog = DialogService.Show<AddTransactionDialog>("Add Transaction", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled && result.Data is TransactionDto created)
+        {
+            _all.Add(created);
+            ApplyFilters();
+            Snackbar.Add("Transaction added.", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(TransactionDto transaction)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Transaction"] = transaction,
+            ["Currencies"] = new[] { "INR", "USD", "EUR" }
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+
+        var dialog = DialogService.Show<AddTransactionDialog>("Edit Transaction", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled && result.Data is TransactionDto updated)
+        {
+            var index = _all.FindIndex(t => t.Id == updated.Id);
+            if (index >= 0)
+            {
+                _all[index] = updated;
+                ApplyFilters();
+                Snackbar.Add("Transaction updated.", Severity.Success);
+            }
+        }
+    }
+
+    private async Task OpenDeleteDialog(TransactionDto transaction)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Transaction"] = transaction
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraSmall };
+
+        var dialog = DialogService.Show<DeleteTransactionDialog>("Delete Transaction", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled && result.Data is bool confirmed && confirmed)
+        {
+            _all.RemoveAll(t => t.Id == transaction.Id);
+            ApplyFilters();
+            Snackbar.Add("Transaction deleted (local only).", Severity.Info);
+        }
+    }
+}
+

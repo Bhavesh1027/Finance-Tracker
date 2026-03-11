@@ -6,6 +6,7 @@
 
 <MudThemeProvider Theme="@_theme" IsDarkMode="@_isDarkMode">
     <MudSnackbarProvider>
+        <MudDialogProvider>
         <MudLayout>
             <MudAppBar Elevation="4" Dense="true">
                 <MudIconButton Icon="@Icons.Material.Filled.Menu"
@@ -81,6 +82,7 @@
                 <MudScrollToTop />
             </MudMainContent>
         </MudLayout>
+        </MudDialogProvider>
     </MudSnackbarProvider>
 </MudThemeProvider>
 

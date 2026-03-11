@@ -37,6 +37,7 @@ builder.Services.AddAuthorizationCore();
 builder.Services.AddScoped<CustomAuthStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<CustomAuthStateProvider>());
 builder.Services.AddScoped<IThemeService, ThemeService>();
+builder.Services.AddScoped<ICategoryColorService, CategoryColorService>();
 
 // MudBlazor UI services (includes charts)
 builder.Services.AddMudServices();

@@ -1,0 +1,217 @@
+@page "/budgets"
+@attribute [Authorize]
+
+@using FinanceTracker.BlazorUI.Models
+@using FinanceTracker.Domain.Enums
+@inject IBudgetService BudgetService
+@inject ICategoryColorService CategoryColorService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudPaper Class="pa-4">
+    <MudStack Spacing="3">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+            <MudText Typo="Typo.h4">Budgets</MudText>
+
+            <MudDatePicker @bind-Date="_selectedMonth"
+                           PickerVariant="PickerVariant.Month"
+                           Label="Month"
+                           DateFormat="MMM yyyy"
+                           OnClose="ReloadForMonth" />
+        </MudStack>
+
+        @if (_loading)
+        {
+            <MudGrid GutterSize="3">
+                @for (var i = 0; i < 3; i++)
+                {
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudSkeleton Width="100%" Height="160px" Animation="Animation.Wave" />
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+        else if (_budgets is { Count: > 0 })
+        {
+            <MudGrid GutterSize="3">
+                @foreach (var budget in _budgets)
+                {
+                    var color = CategoryColorService.GetColor(budget.Category);
+                    var emoji = CategoryColorService.GetEmoji(budget.Category);
+                    var percentage = GetPercentage(budget);
+                    var remaining = budget.LimitAmount - budget.SpentAmount;
+
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudCard Elevation="4" Class="pa-3">
+                            <MudStack Spacing="1.5">
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                    <MudText Typo="Typo.h6">
+                                        @emoji @budget.Category
+                                    </MudText>
+                                    <MudChip T="string" Color="@color" Variant="Variant.Filled" Size="Size.Small">
+                                        @percentage.ToString("0")% used
+                                    </MudChip>
+                                </MudStack>
+
+                                <MudText Typo="Typo.body2">
+                                    <b>Spent:</b> @budget.SpentAmount.ToString("C") /
+                                    <b>Limit:</b> @budget.LimitAmount.ToString("C")
+                                </MudText>
+
+                                <MudProgressLinear Value="@(Math.Clamp(percentage, 0, 150))"
+                                                   Color="@GetProgressColor(budget)"
+                                                   Class="mt-1" />
+
+                                <MudText Typo="Typo.body2" Color="@(remaining >= 0 ? Color.Success : Color.Error)">
+                                    @if (remaining >= 0)
+                                    {
+                                        @($"{remaining.ToString("C")} remaining")
+                                    }
+                                    else
+                                    {
+                                        @($"{Math.Abs(remaining).ToString("C")} over budget")
+                                    }
+                                </MudText>
+
+                                <MudButton Variant="Variant.Outlined"
+                                           Color="Color.Primary"
+                                           Size="Size.Small"
+                                           OnClick="@(() => OpenSetBudgetDialog(budget))">
+                                    Edit Budget
+                                </MudButton>
+                            </MudStack>
+                        </MudCard>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Filled">
+                No budgets set for this month. Click the + button to create your first budget!
+            </MudAlert>
+        }
+
+        <MudFab Color="Color.Primary"
+                Icon="@Icons.Material.Filled.Add"
+                Class="budgets-fab"
+                OnClick="OpenSetBudgetDialogNew" />
+    </MudStack>
+</MudPaper>
+
+@code {
+    private DateTime _selectedMonth = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+    private bool _loading = true;
+
+    private List<BudgetStatusDto> _budgets = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBudgetsAsync();
+    }
+
+    private async Task ReloadForMonth()
+    {
+        await LoadBudgetsAsync();
+    }
+
+    private async Task LoadBudgetsAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            var month = _selectedMonth.Month;
+            var year = _selectedMonth.Year;
+
+            _budgets = await BudgetService.GetBudgetStatusAsync(month, year) ?? new List<BudgetStatusDto>();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("Failed to load budgets.", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private static decimal GetPercentage(BudgetStatusDto budget)
+    {
+        if (budget.LimitAmount <= 0)
+        {
+            return 0;
+        }
+
+        return budget.SpentAmount / budget.LimitAmount * 100m;
+    }
+
+    private static Color GetProgressColor(BudgetStatusDto budget)
+    {
+        if (budget.LimitAmount <= 0)
+        {
+            return Color.Default;
+        }
+
+        var pct = budget.SpentAmount / budget.LimitAmount;
+
+        if (pct >= 1.0m || budget.IsExceeded)
+        {
+            return Color.Error;
+        }
+
+        if (pct >= 0.7m)
+        {
+            return Color.Warning;
+        }
+
+        return Color.Success;
+    }
+
+    private async Task OpenSetBudgetDialog(BudgetStatusDto budget)
+    {
+        var parameters = new DialogParameters
+        {
+            ["BudgetStatus"] = budget,
+            ["InitialMonth"] = _selectedMonth.Month,
+            ["InitialYear"] = _selectedMonth.Year
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+
+        var dialog = DialogService.Show<Budgets_SetBudgetDialog>("Edit Budget", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled && result.Data is BudgetDto)
+        {
+            await LoadBudgetsAsync();
+            Snackbar.Add("Budget updated.", Severity.Success);
+        }
+    }
+
+    private async Task OpenSetBudgetDialogNew()
+    {
+        var parameters = new DialogParameters
+        {
+            ["InitialMonth"] = _selectedMonth.Month,
+            ["InitialYear"] = _selectedMonth.Year
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+
+        var dialog = DialogService.Show<Budgets_SetBudgetDialog>("Set Budget", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled && result.Data is BudgetDto)
+        {
+            await LoadBudgetsAsync();
+            Snackbar.Add("Budget saved.", Severity.Success);
+        }
+    }
+}
+

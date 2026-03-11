@@ -1,0 +1,124 @@
+@using FinanceTracker.BlazorUI.Models
+@inject ITransactionService TransactionService
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudNumericField @bind-Value="_amount"
+                             Label="Amount"
+                             Variant="Variant.Outlined"
+                             Required="true"
+                             Immediate="true" />
+
+            <MudSelect T="string" Label="Currency" @bind-Value="_currency" Variant="Variant.Outlined">
+                @foreach (var c in Currencies)
+                {
+                    <MudSelectItem Value="c">@c</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="Category" Label="Category" @bind-Value="_category" Variant="Variant.Outlined">
+                @foreach (Category category in Enum.GetValues(typeof(Category)))
+                {
+                    <MudSelectItem Value="category">@category</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudRadioGroup T="TransactionType" @bind-SelectedOption="_type">
+                <MudRadio T="TransactionType" Option="TransactionType.Income">Income</MudRadio>
+                <MudRadio T="TransactionType" Option="TransactionType.Expense">Expense</MudRadio>
+            </MudRadioGroup>
+
+            <MudTextField @bind-Value="_description"
+                          Label="Description"
+                          Variant="Variant.Outlined"
+                          Lines="2" />
+
+            <MudDatePicker @bind-Date="_date"
+                           Label="Date"
+                           Variant="Variant.Outlined" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Color="Color.Default" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton OnClick="SaveAsync"
+                   Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   Disabled="_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="me-2" />
+                <span>Saving...</span>
+            }
+            else
+            {
+                <span>Save</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public TransactionDto? Transaction { get; set; }
+    [Parameter] public string[] Currencies { get; set; } = Array.Empty<string>();
+
+    private decimal _amount;
+    private string _currency = "INR";
+    private Category _category = Category.Other;
+    private TransactionType _type = TransactionType.Expense;
+    private string _description = string.Empty;
+    private DateTime _date = DateTime.Today;
+
+    private bool _saving;
+
+    protected override void OnInitialized()
+    {
+        if (Transaction is not null)
+        {
+            _amount = Transaction.Amount;
+            _currency = Transaction.Currency;
+            _category = Transaction.Category;
+            _type = Transaction.TransactionType;
+            _description = Transaction.Description;
+            _date = Transaction.Date;
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _saving = true;
+
+        try
+        {
+            var request = new CreateTransactionRequest
+            {
+                Amount = _amount,
+                Currency = _currency,
+                Category = _category,
+                Description = _description,
+                Date = _date,
+                TransactionType = _type
+            };
+
+            var result = await TransactionService.CreateTransactionAsync(request);
+
+            MudDialog.Close(DialogResult.Ok(result));
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}
+

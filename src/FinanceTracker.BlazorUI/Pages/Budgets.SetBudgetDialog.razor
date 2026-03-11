@@ -1,0 +1,116 @@
+@using FinanceTracker.BlazorUI.Models
+@using FinanceTracker.Domain.Enums
+@inject IBudgetService BudgetService
+@inject ICategoryColorService CategoryColorService
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudSelect T="Category" Label="Category" @bind-Value="_category" Variant="Variant.Outlined">
+                @foreach (Category category in Enum.GetValues(typeof(Category)))
+                {
+                    var emoji = CategoryColorService.GetEmoji(category);
+                    <MudSelectItem Value="category">@emoji @category</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudNumericField @bind-Value="_limitAmount"
+                             Label="Budget Limit"
+                             Variant="Variant.Outlined"
+                             Required="true"
+                             Immediate="true" />
+
+            <MudSelect T="string" Label="Currency" @bind-Value="_currency" Variant="Variant.Outlined">
+                @foreach (var c in _currencies)
+                {
+                    <MudSelectItem Value="c">@c</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudDatePicker @bind-Date="_month"
+                           PickerVariant="PickerVariant.Month"
+                           Label="Month"
+                           DateFormat="MMM yyyy" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Color="Color.Default" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton OnClick="SaveAsync"
+                   Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   Disabled="_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="me-2" />
+                <span>Saving...</span>
+            }
+            else
+            {
+                <span>Save</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public BudgetStatusDto? BudgetStatus { get; set; }
+    [Parameter] public int InitialMonth { get; set; }
+    [Parameter] public int InitialYear { get; set; }
+
+    private readonly string[] _currencies = { "INR", "USD", "EUR" };
+
+    private Category _category = Category.Other;
+    private decimal _limitAmount;
+    private string _currency = "INR";
+    private DateTime _month;
+
+    private bool _saving;
+
+    protected override void OnInitialized()
+    {
+        _month = new DateTime(InitialYear, InitialMonth, 1);
+
+        if (BudgetStatus is not null)
+        {
+            _category = BudgetStatus.Category;
+            _limitAmount = BudgetStatus.LimitAmount;
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving)
+        {
+            return;
+        }
+
+        _saving = true;
+
+        try
+        {
+            var request = new SetBudgetRequest
+            {
+                Category = _category,
+                LimitAmount = _limitAmount,
+                Currency = _currency,
+                Month = _month.Month,
+                Year = _month.Year
+            };
+
+            var result = await BudgetService.SetBudgetAsync(request);
+
+            MudDialog.Close(DialogResult.Ok(result));
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}
+

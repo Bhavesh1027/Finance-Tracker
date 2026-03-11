@@ -1,0 +1,36 @@
+@using FinanceTracker.BlazorUI.Models
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.h6" Class="mb-2">Are you sure?</MudText>
+        <MudText Typo="Typo.body2">
+            You are about to delete the transaction:
+        </MudText>
+        <MudList T="string" Dense="true" Class="mt-2">
+            <MudListItem T="string">Category: @Transaction.Category</MudListItem>
+            <MudListItem T="string">Description: @Transaction.Description</MudListItem>
+            <MudListItem T="string">Amount: @Transaction.Amount.ToString("C")</MudListItem>
+            <MudListItem T="string">Date: @Transaction.Date.ToShortDateString()</MudListItem>
+        </MudList>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Color="Color.Default" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton OnClick="Confirm" Color="Color.Error" Variant="Variant.Filled">Delete</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public TransactionDto Transaction { get; set; } = default!;
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private void Confirm()
+    {
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+}
+

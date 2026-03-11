@@ -1,0 +1,403 @@
+@page "/insights"
+@attribute [Authorize]
+
+@using FinanceTracker.BlazorUI.Models
+@using FinanceTracker.Domain.Enums
+@inject IReportService ReportService
+@inject ITransactionService TransactionService
+@inject IBudgetService BudgetService
+@inject ICategoryColorService CategoryColorService
+@inject ISnackbar Snackbar
+
+<MudPaper Class="pa-4">
+    <MudStack Spacing="4">
+        @if (_loading)
+        {
+            <MudGrid GutterSize="3">
+                @for (var i = 0; i < 4; i++)
+                {
+                    <MudItem xs="12" sm="6" md="6">
+                        <MudSkeleton Width="100%" Height="180px" Animation="Animation.Wave" />
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+        else if (_insights is not null)
+        {
+            <MudGrid GutterSize="3">
+                <!-- Card 1: Top Spending Category -->
+                <MudItem xs="12" sm="6" md="6">
+                    <MudCard Elevation="4" Class="pa-3">
+                        <MudStack Spacing="1.5">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Top Spending Category</MudText>
+                            @if (_topCategoryBreakdown is not null)
+                            {
+                                var emoji = CategoryColorService.GetEmoji(_topCategoryBreakdown.Category);
+                                <MudText Typo="Typo.h5">
+                                    @emoji @_topCategoryBreakdown.Category
+                                </MudText>
+                                <MudText Typo="Typo.body2">
+                                    You spent the most on <b>@_topCategoryBreakdown.Category</b> this month.
+                                </MudText>
+
+                                @if (_secondCategoryBreakdown is not null && _secondCategoryBreakdown.Expenses > 0)
+                                {
+                                    var more = _topCategoryBreakdown.Expenses - _secondCategoryBreakdown.Expenses;
+                                    var ratio = (double)(_secondCategoryBreakdown.Expenses == 0
+                                        ? 1
+                                        : _topCategoryBreakdown.Expenses / _secondCategoryBreakdown.Expenses);
+
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @FormatCurrency(more) more than your second largest category.
+                                    </MudText>
+                                    <MudProgressLinear Value="@(Math.Clamp(ratio * 50, 0, 150))"
+                                                       Color="@CategoryColorService.GetColor(_topCategoryBreakdown.Category)"
+                                                       Class="mt-1" />
+                                }
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                    Not enough data to determine a top category.
+                                </MudText>
+                            }
+                        </MudStack>
+                    </MudCard>
+                </MudItem>
+
+                <!-- Card 2: Average Daily Spend -->
+                <MudItem xs="12" sm="6" md="6">
+                    <MudCard Elevation="4" Class="pa-3">
+                        <MudStack Spacing="1.5">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Average Daily Spend</MudText>
+                            <MudText Typo="Typo.h3">
+                                @FormatCurrency(_insights.AverageDailySpend)
+                            </MudText>
+                            <MudText Typo="Typo.body2">
+                                per day on average this month.
+                            </MudText>
+
+                            @if (_previousAverageDailySpend.HasValue && _previousAverageDailySpend.Value > 0)
+                            {
+                                var diff = _insights.AverageDailySpend - _previousAverageDailySpend.Value;
+                                var pct = diff / _previousAverageDailySpend.Value * 100m;
+                                var up = diff > 0;
+                                <MudText Typo="Typo.caption" Color="@(up ? Color.Error : Color.Success)">
+                                    @(up ? "↑" : "↓") @Math.Abs(pct).ToString("0.0")% vs last month
+                                </MudText>
+                            }
+                        </MudStack>
+                    </MudCard>
+                </MudItem>
+
+                <!-- Card 3: Biggest Transaction -->
+                <MudItem xs="12" sm="6" md="6">
+                    <MudCard Elevation="4" Class="pa-3">
+                        <MudStack Spacing="1.5">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Biggest Transaction</MudText>
+                            @if (_biggestTransaction is not null)
+                            {
+                                <MudText Typo="Typo.h5">
+                                    @FormatCurrency(_biggestTransaction.Amount)
+                                </MudText>
+                                <MudText Typo="Typo.body2">
+                                    @_biggestTransaction.Description
+                                </MudText>
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <MudText Typo="Typo.caption">
+                                        @_biggestTransaction.Date:dd MMM yyyy
+                                    </MudText>
+                                    <MudChip T="string"
+                                             Color="@CategoryColorService.GetColor(_biggestTransaction.Category)"
+                                             Size="Size.Small"
+                                             Variant="Variant.Outlined">
+                                        @_biggestTransaction.Category
+                                    </MudChip>
+                                </MudStack>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                    No transactions recorded this month.
+                                </MudText>
+                            }
+                        </MudStack>
+                    </MudCard>
+                </MudItem>
+
+                <!-- Card 4: Busiest Spending Day -->
+                <MudItem xs="12" sm="6" md="6">
+                    <MudCard Elevation="4" Class="pa-3">
+                        <MudStack Spacing="1.5">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Busiest Spending Day</MudText>
+                            @if (!string.IsNullOrWhiteSpace(_insights.BusiestDayOfWeek))
+                            {
+                                <MudText Typo="Typo.h5">
+                                    @_insights.BusiestDayOfWeek
+                                </MudText>
+                                <MudText Typo="Typo.body2">
+                                    Total spent on @_insights.BusiestDayOfWeek: <b>@FormatCurrency(_busiestDayTotal)</b>
+                                </MudText>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                    Not enough data to determine busiest day.
+                                </MudText>
+                            }
+
+                            @if (_dayOfWeekLabels.Length > 0)
+                            {
+                                <MudChart T="double"
+                                          ChartType="ChartType.Bar"
+                                          Labels="@_dayOfWeekLabels"
+                                          Data="@_dayOfWeekData"
+                                          Class="mt-2" />
+                            }
+                        </MudStack>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+
+            <!-- Bottom: Smart Tips -->
+            <MudStack Spacing="1.5" Class="mt-2">
+                @if (_smartTips.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info">
+                        Keep tracking your spending to unlock personalized tips.
+                    </MudAlert>
+                }
+                else
+                {
+                    @foreach (var tip in _smartTips)
+                    {
+                        <MudAlert Severity="@tip.Severity">
+                            @tip.Message
+                        </MudAlert>
+                    }
+                }
+            </MudStack>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    private bool _loading = true;
+
+    private SpendingInsightDto? _insights;
+    private List<TransactionDto> _transactions = new();
+    private MonthlySummaryDto? _summary;
+    private List<BudgetStatusDto> _budgets = new();
+
+    private CategorySummaryDto? _topCategoryBreakdown;
+    private CategorySummaryDto? _secondCategoryBreakdown;
+    private TransactionDto? _biggestTransaction;
+
+    private decimal _busiestDayTotal;
+    private string[] _dayOfWeekLabels = Array.Empty<string>();
+    private double[][] _dayOfWeekData = Array.Empty<double[]>();
+
+    private decimal? _previousAverageDailySpend;
+
+    private readonly List<(Severity Severity, string Message)> _smartTips = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var now = DateTime.UtcNow;
+        var currentMonth = now.Month;
+        var currentYear = now.Year;
+
+        var previousMonthDate = now.AddMonths(-1);
+        var prevMonth = previousMonthDate.Month;
+        var prevYear = previousMonthDate.Year;
+
+        try
+        {
+            var insightsTask = ReportService.GetInsightsAsync();
+            var transactionsTask = TransactionService.GetTransactionsAsync(currentMonth, currentYear);
+            var summaryTask = TransactionService.GetSummaryAsync(currentMonth, currentYear);
+            var budgetsTask = BudgetService.GetBudgetStatusAsync(currentMonth, currentYear);
+            var prevSummaryTask = TransactionService.GetSummaryAsync(prevMonth, prevYear);
+
+            await Task.WhenAll(insightsTask, transactionsTask, summaryTask, budgetsTask, prevSummaryTask);
+
+            _insights = insightsTask.Result;
+            _transactions = transactionsTask.Result ?? new List<TransactionDto>();
+            _summary = summaryTask.Result;
+            _budgets = budgetsTask.Result ?? new List<BudgetStatusDto>();
+
+            var prevSummary = prevSummaryTask.Result;
+            _previousAverageDailySpend = ComputeAverageDailySpend(prevSummary, prevMonth, prevYear);
+
+            BuildCategoryInsights();
+            BuildBiggestTransaction();
+            BuildDayOfWeekData();
+            BuildSmartTips();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("Failed to load insights.", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void BuildCategoryInsights()
+    {
+        if (_summary is null)
+        {
+            _topCategoryBreakdown = null;
+            _secondCategoryBreakdown = null;
+            return;
+        }
+
+        var ordered = _summary.BreakdownByCategory
+            .OrderByDescending(c => c.Expenses)
+            .ToList();
+
+        _topCategoryBreakdown = ordered.FirstOrDefault();
+        _secondCategoryBreakdown = ordered.Skip(1).FirstOrDefault();
+    }
+
+    private void BuildBiggestTransaction()
+    {
+        if (_transactions.Count == 0)
+        {
+            _biggestTransaction = null;
+            return;
+        }
+
+        _biggestTransaction = _transactions
+            .OrderByDescending(t => t.Amount)
+            .FirstOrDefault();
+    }
+
+    private void BuildDayOfWeekData()
+    {
+        if (_transactions.Count == 0)
+        {
+            _dayOfWeekLabels = Array.Empty<string>();
+            _dayOfWeekData = Array.Empty<double[]>();
+            _busiestDayTotal = 0;
+            return;
+        }
+
+        var expensesByDay = _transactions
+            .Where(t => t.TransactionType == TransactionType.Expense)
+            .GroupBy(t => t.Date.DayOfWeek)
+            .OrderBy(g => g.Key)
+            .ToList();
+
+        _dayOfWeekLabels = expensesByDay
+            .Select(g => g.Key.ToString().Substring(0, 3))
+            .ToArray();
+
+        var values = expensesByDay
+            .Select(g => (double)g.Sum(t => t.Amount))
+            .ToArray();
+
+        _dayOfWeekData = new[]
+        {
+            values
+        };
+
+        if (!string.IsNullOrWhiteSpace(_insights?.BusiestDayOfWeek) &&
+            Enum.TryParse<DayOfWeek>(_insights.BusiestDayOfWeek, true, out var busiest))
+        {
+            _busiestDayTotal = _transactions
+                .Where(t => t.TransactionType == TransactionType.Expense && t.Date.DayOfWeek == busiest)
+                .Sum(t => t.Amount);
+        }
+    }
+
+    private void BuildSmartTips()
+    {
+        _smartTips.Clear();
+
+        if (_summary is not null)
+        {
+            var totalExpenses = _summary.TotalExpenses;
+            var food = _summary.BreakdownByCategory
+                .FirstOrDefault(c => c.Category == Category.Food);
+
+            if (food is not null && totalExpenses > 0)
+            {
+                var pct = food.Expenses / totalExpenses * 100m;
+                if (pct > 40m)
+                {
+                    _smartTips.Add((Severity.Info,
+                        "🍔 Food is your biggest expense. Consider meal prepping to save on daily spending."));
+                }
+            }
+
+            if (_summary.NetBalance > 0)
+            {
+                _smartTips.Add((Severity.Success,
+                    $"✅ Great job! You saved {FormatCurrency(_summary.NetBalance)} this month."));
+            }
+        }
+
+        var exceededCount = _budgets.Count(b => b.IsExceeded);
+        if (exceededCount > 0)
+        {
+            _smartTips.Add((Severity.Warning,
+                $"⚠️ You exceeded {exceededCount} budget{(exceededCount > 1 ? "s" : string.Empty)} this month. Review your limits."));
+        }
+    }
+
+    private static decimal? ComputeAverageDailySpend(MonthlySummaryDto? summary, int month, int year)
+    {
+        if (summary is null)
+        {
+            return null;
+        }
+
+        var days = DateTime.DaysInMonth(year, month);
+        if (days <= 0)
+        {
+            return null;
+        }
+
+        return summary.TotalExpenses / days;
+    }
+
+    private static string FormatCurrency(decimal amount)
+    {
+        var sign = amount < 0 ? "-" : string.Empty;
+        amount = Math.Abs(Math.Round(amount, 2, MidpointRounding.AwayFromZero));
+
+        var integerPart = (long)amount;
+        var fraction = (int)((amount - integerPart) * 100);
+
+        var intStr = integerPart.ToString();
+        if (intStr.Length > 3)
+        {
+            var last3 = intStr[^3..];
+            var rest = intStr[..^3];
+            var parts = new List<string>();
+            while (rest.Length > 2)
+            {
+                parts.Insert(0, rest[^2..]);
+                rest = rest[..^2];
+            }
+
+            if (rest.Length > 0)
+            {
+                parts.Insert(0, rest);
+            }
+
+            intStr = string.Join(",", parts) + "," + last3;
+        }
+
+        var fracStr = fraction > 0 ? "." + fraction.ToString("00") : string.Empty;
+        return $"{sign}₹{intStr}{fracStr}";
+    }
+}
+

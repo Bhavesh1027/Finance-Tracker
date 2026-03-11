@@ -1,0 +1,414 @@
+@page "/reports"
+@attribute [Authorize]
+
+@using FinanceTracker.BlazorUI.Models
+@using FinanceTracker.Domain.Enums
+@inject IReportService ReportService
+@inject ITransactionService TransactionService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<MudPaper Class="pa-4">
+    <MudStack Spacing="4">
+        <!-- Section 1: Monthly Trend -->
+        <MudPaper Elevation="4" Class="pa-4">
+            <MudStack Spacing="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.h5">Monthly Trend</MudText>
+
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudButtonGroup Color="Color.Primary" Variant="Variant.Outlined">
+                            <MudButton OnClick="@(() => SetTrendMonths(3))" Disabled="@(_trendMonths == 3)">3M</MudButton>
+                            <MudButton OnClick="@(() => SetTrendMonths(6))" Disabled="@(_trendMonths == 6)">6M</MudButton>
+                            <MudButton OnClick="@(() => SetTrendMonths(12))" Disabled="@(_trendMonths == 12)">12M</MudButton>
+                        </MudButtonGroup>
+
+                        <MudButtonGroup Color="Color.Primary" Variant="Variant.Outlined">
+                            <MudButton OnClick="@(() => _trendChartType = ChartType.Line)"
+                                       Disabled="@(_trendChartType == ChartType.Line)">
+                                Line
+                            </MudButton>
+                            <MudButton OnClick="@(() => _trendChartType = ChartType.Bar)"
+                                       Disabled="@(_trendChartType == ChartType.Bar)">
+                                Bar
+                            </MudButton>
+                        </MudButtonGroup>
+
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Download"
+                                   OnClick="@(() => ExportChartAsPngAsync("trendChart", "monthly-trend.png"))">
+                            Export
+                        </MudButton>
+                    </MudStack>
+                </MudStack>
+
+                @if (_loadingTrends)
+                {
+                    <MudSkeleton Width="100%" Height="260px" Animation="Animation.Wave" />
+                }
+                else if (_trendLabels.Length > 0)
+                {
+                    <div id="trendChart">
+                        <MudChart T="double"
+                                  ChartType="@_trendChartType"
+                                  Labels="@_trendLabels"
+                                  Data="@_trendData"
+                                  Class="mt-2" />
+                    </div>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        No trend data available.
+                    </MudText>
+                }
+            </MudStack>
+        </MudPaper>
+
+        <!-- Section 2: Category Breakdown -->
+        <MudPaper Elevation="4" Class="pa-4">
+            <MudStack Spacing="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.h5">Category Breakdown (@_selectedMonth:MMM yyyy)</MudText>
+
+                    <MudDatePicker @bind-Date="_selectedMonth"
+                                   PickerVariant="PickerVariant.Month"
+                                   DateFormat="MMM yyyy"
+                                   OnClose="ReloadSummaryForMonth" />
+
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Download"
+                               OnClick="@(() => ExportChartAsPngAsync("categoryChart", "category-breakdown.png"))">
+                        Export
+                    </MudButton>
+                </MudStack>
+
+                <MudGrid GutterSize="3">
+                    <MudItem xs="12" md="6">
+                        @if (_loadingSummary)
+                        {
+                            <MudSkeleton Width="100%" Height="260px" Animation="Animation.Wave" />
+                        }
+                        else if (_categoryLabels.Length > 0)
+                        {
+                            <div id="categoryChart">
+                                <MudChart T="double"
+                                          ChartType="ChartType.Donut"
+                                          Labels="@_categoryLabels"
+                                          Data="@_categoryData"
+                                          Class="mt-2" />
+                            </div>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                No spending data for this month.
+                            </MudText>
+                        }
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        @if (_loadingSummary)
+                        {
+                            <MudSkeleton Width="100%" Height="260px" Animation="Animation.Wave" />
+                        }
+                        else if (_categoryBreakdown.Any())
+                        {
+                            <MudSimpleTable Dense="true">
+                                <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th class="text-end">Amount</th>
+                                    <th class="text-end">Share</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @foreach (var row in _categoryBreakdown)
+                                {
+                                    var isSelected = row.Category == _selectedCategory;
+                                    <tr class="@(isSelected ? "selected-row" : string.Empty)"
+                                        @onclick="@(() => _selectedCategory = row.Category)">
+                                        <td>@row.Category</td>
+                                        <td class="text-end">@row.Amount.ToString("C")</td>
+                                        <td class="text-end">@row.Percentage.ToString("0.0")%</td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </MudSimpleTable>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                No categories to display.
+                            </MudText>
+                        }
+                    </MudItem>
+                </MudGrid>
+            </MudStack>
+        </MudPaper>
+
+        <!-- Section 3: Income vs Expense comparison -->
+        <MudPaper Elevation="4" Class="pa-4">
+            <MudStack Spacing="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.h5">Income vs Expenses</MudText>
+
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudButtonGroup Color="Color.Primary" Variant="Variant.Outlined">
+                            <MudButton OnClick="@(() => _incomeExpenseStacked = false)"
+                                       Disabled="@(!_incomeExpenseStacked)">
+                                Grouped
+                            </MudButton>
+                            <MudButton OnClick="@(() => _incomeExpenseStacked = true)"
+                                       Disabled="@_incomeExpenseStacked">
+                                Stacked
+                            </MudButton>
+                        </MudButtonGroup>
+
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Download"
+                                   OnClick="@(() => ExportChartAsPngAsync("incomeExpenseChart", "income-vs-expenses.png"))">
+                            Export
+                        </MudButton>
+                    </MudStack>
+                </MudStack>
+
+                @if (_loadingTrends)
+                {
+                    <MudSkeleton Width="100%" Height="260px" Animation="Animation.Wave" />
+                }
+                else if (_trendLabels.Length > 0)
+                {
+                    <div id="incomeExpenseChart">
+                        <MudChart T="double"
+                                  ChartType="ChartType.Bar"
+                                  Labels="@_trendLabels"
+                                  Data="@_incomeExpenseData"
+                                  Class="mt-2" />
+                    </div>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        No data available.
+                    </MudText>
+                }
+            </MudStack>
+        </MudPaper>
+
+        <!-- Section 4: Net Balance trend -->
+        <MudPaper Elevation="4" Class="pa-4">
+            <MudStack Spacing="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.h5">Net Balance Trend</MudText>
+
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Download"
+                               OnClick="@(() => ExportChartAsPngAsync("netBalanceChart", "net-balance.png"))">
+                        Export
+                    </MudButton>
+                </MudStack>
+
+                @if (_loadingTrends)
+                {
+                    <MudSkeleton Width="100%" Height="260px" Animation="Animation.Wave" />
+                }
+                else if (_trendLabels.Length > 0)
+                {
+                    <div id="netBalanceChart">
+                        <MudChart T="double"
+                                  ChartType="ChartType.Line"
+                                  Labels="@_trendLabels"
+                                  Data="@_netBalanceData"
+                                  Class="mt-2 net-balance-chart" />
+                    </div>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        No net balance data available.
+                    </MudText>
+                }
+            </MudStack>
+        </MudPaper>
+    </MudStack>
+</MudPaper>
+
+@code {
+    private int _trendMonths = 6;
+    private bool _loadingTrends = true;
+    private bool _loadingSummary = true;
+
+    private DateTime _selectedMonth = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+
+    private string[] _trendLabels = Array.Empty<string>();
+    private double[][] _trendData = Array.Empty<double[]>();
+    private double[][] _incomeExpenseData = Array.Empty<double[]>();
+    private double[][] _netBalanceData = Array.Empty<double[]>();
+
+    private ChartType _trendChartType = ChartType.Line;
+    private bool _incomeExpenseStacked;
+
+    private string[] _categoryLabels = Array.Empty<string>();
+    private double[] _categoryData = Array.Empty<double>();
+
+    private readonly List<(Category Category, decimal Amount, decimal Percentage)> _categoryBreakdown = new();
+    private Category? _selectedCategory;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(LoadTrendsAsync(), LoadSummaryAsync());
+    }
+
+    private async Task LoadTrendsAsync()
+    {
+        _loadingTrends = true;
+
+        try
+        {
+            var trends = await ReportService.GetTrendsAsync(_trendMonths);
+
+            var ordered = trends
+                .OrderBy(t => new DateTime(t.Year, t.Month, 1))
+                .ToList();
+
+            _trendLabels = ordered
+                .Select(t => new DateTime(t.Year, t.Month, 1).ToString("MMM"))
+                .ToArray();
+
+            var income = ordered.Select(t => (double)t.TotalIncome).ToArray();
+            var expenses = ordered.Select(t => (double)t.TotalExpenses).ToArray();
+            var net = ordered.Select(t => (double)t.NetBalance).ToArray();
+
+            _trendData = new[]
+            {
+                income,
+                expenses,
+                net
+            };
+
+            _incomeExpenseData = BuildIncomeExpenseData(income, expenses);
+            _netBalanceData = new[]
+            {
+                net
+            };
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("Failed to load report trends.", Severity.Error);
+        }
+        finally
+        {
+            _loadingTrends = false;
+            StateHasChanged();
+        }
+    }
+
+    private double[][] BuildIncomeExpenseData(double[] income, double[] expenses)
+    {
+        if (!_incomeExpenseStacked)
+        {
+            return new[]
+            {
+                income,
+                expenses
+            };
+        }
+
+        // Approximate stacked effect by using cumulative values.
+        var stackedIncome = new double[income.Length];
+        var stackedExpenses = new double[expenses.Length];
+
+        for (var i = 0; i < income.Length; i++)
+        {
+            stackedIncome[i] = income[i];
+            stackedExpenses[i] = income[i] + expenses[i];
+        }
+
+        return new[]
+        {
+            stackedIncome,
+            stackedExpenses
+        };
+    }
+
+    private async Task LoadSummaryAsync()
+    {
+        _loadingSummary = true;
+
+        try
+        {
+            var summary = await TransactionService.GetSummaryAsync(_selectedMonth.Month, _selectedMonth.Year);
+
+            var categories = summary.BreakdownByCategory
+                .Where(c => c.Expenses > 0)
+                .ToList();
+
+            if (categories.Count == 0)
+            {
+                _categoryLabels = Array.Empty<string>();
+                _categoryData = Array.Empty<double>();
+                _categoryBreakdown.Clear();
+                _selectedCategory = null;
+                return;
+            }
+
+            var total = categories.Sum(c => c.Expenses);
+
+            _categoryLabels = categories.Select(c => c.Category.ToString()).ToArray();
+            _categoryData = categories.Select(c => (double)c.Expenses).ToArray();
+
+            _categoryBreakdown.Clear();
+            foreach (var c in categories)
+            {
+                var pct = total == 0 ? 0 : c.Expenses / total * 100m;
+                _categoryBreakdown.Add((c.Category, c.Expenses, pct));
+            }
+
+            _selectedCategory ??= categories.First().Category;
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("Failed to load category breakdown.", Severity.Error);
+        }
+        finally
+        {
+            _loadingSummary = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ReloadSummaryForMonth()
+    {
+        await LoadSummaryAsync();
+    }
+
+    private async Task SetTrendMonths(int months)
+    {
+        if (_trendMonths == months)
+        {
+            return;
+        }
+
+        _trendMonths = months;
+        await LoadTrendsAsync();
+    }
+
+    private async Task ExportChartAsPngAsync(string elementId, string fileName)
+    {
+        await JS.InvokeVoidAsync("reportsCharts.downloadElementAsPng", elementId, fileName);
+    }
+}
+

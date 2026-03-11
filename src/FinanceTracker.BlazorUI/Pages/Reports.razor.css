@@ -1,0 +1,8 @@
+.selected-row {
+    background-color: rgba(124, 58, 237, 0.16);
+}
+
+.net-balance-chart svg path {
+    stroke-width: 2.5;
+}
+
