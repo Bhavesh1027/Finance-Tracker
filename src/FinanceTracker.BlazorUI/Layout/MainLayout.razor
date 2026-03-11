@@ -1,16 +1,179 @@
-﻿@inherits LayoutComponentBase
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+@inject IThemeService ThemeService
+@inject IAuthService AuthService
+@inject ISnackbar Snackbar
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
+<MudThemeProvider Theme="@_theme" IsDarkMode="@_isDarkMode">
+    <MudSnackbarProvider>
+        <MudLayout>
+            <MudAppBar Elevation="4" Dense="true">
+                <MudIconButton Icon="@Icons.Material.Filled.Menu"
+                               Color="Color.Inherit"
+                               Edge="Edge.Start"
+                               OnClick="ToggleDrawer" />
 
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
-</div>
+                <MudText Typo="Typo.h6" Class="ms-2">
+                    💰 FinanceTracker
+                </MudText>
+
+                <MudSpacer />
+
+                <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.DarkMode : Icons.Material.Filled.LightMode)"
+                               Color="Color.Inherit"
+                               OnClick="ToggleTheme"
+                               AriaLabel="Toggle dark mode" />
+
+                <AuthorizeView>
+                    <Authorized>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="ms-4">
+                            <MudAvatar Color="Color.Primary">
+                                @(_userInitials)
+                            </MudAvatar>
+                            <MudText Typo="Typo.body2">@_userName</MudText>
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Error"
+                                       Size="Size.Small"
+                                       OnClick="LogoutAsync">
+                                Logout
+                            </MudButton>
+                        </MudStack>
+                    </Authorized>
+                    <NotAuthorized>
+                        <MudButton Variant="Variant.Text"
+                                   Color="Color.Primary"
+                                   Size="Size.Small"
+                                   OnClick="@(() => Navigation.NavigateTo("/login"))">
+                            Login
+                        </MudButton>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </MudAppBar>
+
+            <MudDrawer @bind-Open="_drawerOpen"
+                       Variant="DrawerVariant.Responsive"
+                       Elevation="1"
+                       ClipMode="DrawerClipMode.Never">
+                <MudNavMenu>
+                    <MudNavLink Href="/dashboard" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">
+                        📊 Dashboard
+                    </MudNavLink>
+                    <MudNavLink Href="/transactions" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Payments">
+                        💸 Transactions
+                    </MudNavLink>
+                    <MudNavLink Href="/budgets" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Savings">
+                        🎯 Budgets
+                    </MudNavLink>
+                    <MudNavLink Href="/reports" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Insights">
+                        📈 Reports
+                    </MudNavLink>
+                    <MudNavLink Href="/insights" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.TipsAndUpdates">
+                        💡 Insights
+                    </MudNavLink>
+                </MudNavMenu>
+            </MudDrawer>
+
+            <MudMainContent>
+                <MudContainer MaxWidth="MaxWidth.False" Class="pa-4">
+                    @Body
+                </MudContainer>
+
+                <MudScrollToTop />
+            </MudMainContent>
+        </MudLayout>
+    </MudSnackbarProvider>
+</MudThemeProvider>
+
+@code {
+    private readonly MudTheme _theme = new()
+    {
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#7C3AED",
+            Secondary = "#06B6D4",
+            Background = "#0D1117",
+            Surface = "#161B22",
+            AppbarBackground = "#0D1117",
+            DrawerBackground = "#0D1117",
+            TextPrimary = "#E5E7EB",
+            TextSecondary = "#9CA3AF"
+        },
+        Typography = new Typography
+        {
+            Default = new Default
+            {
+                FontFamily = new[] { "Inter", "Segoe UI", "sans-serif" }
+            },
+            H1 = new H1 { FontFamily = new[] { "Inter", "Segoe UI", "sans-serif" } },
+            H2 = new H2 { FontFamily = new[] { "Inter", "Segoe UI", "sans-serif" } },
+            H3 = new H3 { FontFamily = new[] { "Inter", "Segoe UI", "sans-serif" } },
+            Body1 = new Body1 { FontFamily = new[] { "Inter", "Segoe UI", "sans-serif" } },
+            Body2 = new Body2 { FontFamily = new[] { "Inter", "Segoe UI", "sans-serif" } }
+        }
+    };
+
+    private bool _drawerOpen = true;
+    private bool _isDarkMode = true;
+
+    private string _userName = string.Empty;
+    private string _userInitials = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isDarkMode = await ThemeService.IsDarkModeAsync();
+        ThemeService.OnThemeChanged += HandleThemeChanged;
+
+        var isAuthenticated = await AuthService.IsAuthenticatedAsync();
+        if (isAuthenticated)
+        {
+            _userName = await AuthService.GetUserNameAsync() ?? "User";
+            _userInitials = GetInitials(_userName);
+        }
+    }
+
+    private void HandleThemeChanged(bool isDark)
+    {
+        _isDarkMode = isDark;
+        StateHasChanged();
+    }
+
+    private void ToggleDrawer()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+    private async Task ToggleTheme()
+    {
+        await ThemeService.ToggleThemeAsync();
+        Snackbar.Add(_isDarkMode ? "Switched to light theme" : "Switched to dark theme", Severity.Normal);
+    }
+
+    private async Task LogoutAsync()
+    {
+        await AuthService.LogoutAsync();
+        Snackbar.Add("You have been logged out.", Severity.Info);
+        Navigation.NavigateTo("/login", true);
+    }
+
+    private static string GetInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return "?";
+        }
+
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 1)
+        {
+            return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpperInvariant();
+        }
+
+        return (parts[0][0].ToString() + parts[^1][0]).ToUpperInvariant();
+    }
+
+    public void Dispose()
+    {
+        ThemeService.OnThemeChanged -= HandleThemeChanged;
+    }
+}
+
