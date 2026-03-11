@@ -42,6 +42,36 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      
+  api:
+    build:
+      context: .                         # build from repo root
+      dockerfile: docker/api.Dockerfile  # use our API Dockerfile
+    container_name: myapp-api
+    ports:
+      - "5000:8080"    # localhost:5000 → container:8080
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+    restart: unless-stopped
+    networks:
+      - myapp-network
+
+  blazor:
+    build:
+      context: .
+      dockerfile: docker/blazor.Dockerfile
+    container_name: myapp-blazor
+    ports:
+      - "3000:80"     # localhost:3000 → container:80
+    depends_on:
+      - api            # blazor starts AFTER api
+    restart: unless-stopped
+    networks:
+      - myapp-network
+
+networks:
+  myapp-network:
+    driver: bridge
 
 volumes:
   sql_data:
